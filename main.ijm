@@ -35,7 +35,7 @@ Ext.getSeriesCount(seriesCount);
 // Create output table
 outputTable = "output_table";
 Table.create(outputTable);
-outputLine = 0;
+var outputLine = 0;
 
 //seriesNo = 101; 
 //analyseImage(seriesNo); // remove for batch
@@ -47,7 +47,7 @@ for (seriesNo=1; seriesNo <= seriesCount; seriesNo++) { //uncomment for batch
 // -- Save Putput and Exit --- // 
 selectWindow(outputTable);
 saveAs("Results", outputFileFullPath);
-setBatchMode("exit and display");
+setBatchMode(false);
 
 // --- Analyse each image --- //
 function analyseImage(seriesNo) { 
