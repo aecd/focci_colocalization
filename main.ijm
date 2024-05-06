@@ -10,21 +10,21 @@ backgroundImageDapi = "backgroundImage_dapi.tif"
 filterRadius = 2
 minNucleousSize = 75
 maxNucleousSize = 1000
-focciChannel = 3 // channel for detecting focci
-comparisonChannel = 2 // other channel
+greenChannel = 2 // channel for detecting focci
+redChannel = 3 // other channel
 focciSize = 6
 focciIntensity = 15
 
 // --- Initialization --- //
 run("Options...", "iterations=1 count=1 black");
 run("Bio-Formats Macro Extensions"); 
-setBatchMode(true);
+setBatchMode(false);
 run("ROI Manager..."); // open the ROI manager
 
 // --- Select the Image --- //
 #@ File (label = "Select a file", style = "file") file
 imageFolder = File.getDirectory(file);
-outputFile = "Analysis of " + File.getNameWithoutExtension(file) + ".csv";
+outputFile = "Analysis of " + File.getNameWithoutExtension(file);
 outputFileFullPath = imageFolder + File.separator + outputFile;
 backgroundImageDapi = imageFolder + backgroundImageDapi;
 Ext.setId(file);
@@ -32,10 +32,18 @@ Ext.setId(file);
 // Determine the number of series.
 Ext.getSeriesCount(seriesCount);
 
-// Create output table
-outputTable = "output_table";
-Table.create(outputTable);
-var outputLine = 0;
+// Create output tables
+outputTable_Nuclei = "output_table_nuclei";
+Table.create(outputTable_Nuclei);
+var outputLine_nuclei = 0;
+
+outputTableFocciGreenChannel = "output_table_focci_green_channel";
+Table.create(outputTableFocciGreenChannel);
+var outputLineFocciGreenChannel = 0;
+
+outputTableFocciRedChannel = "output_table_focci_red_channel";
+Table.create(outputTableFocciRedChannel);
+var outputLineFocciRedChannel = 0;
 
 //seriesNo = 101; 
 //analyseImage(seriesNo); // remove for batch
@@ -44,9 +52,16 @@ for (seriesNo=1; seriesNo <= seriesCount; seriesNo++) { //uncomment for batch
 	analyseImage(seriesNo);
 }
 
-// -- Save Putput and Exit --- // 
-selectWindow(outputTable);
-saveAs("Results", outputFileFullPath);
+// -- Save Output and Exit --- // 
+selectWindow(outputTable_Nuclei);
+saveAs("Results", outputFileFullPath + "_nuclei.csv");
+
+selectWindow(outputTableFocciGreenChannel);
+saveAs("Results", outputFileFullPath + "_focci_green_channel.csv");
+
+selectWindow(outputTableFocciRedChannel);
+saveAs("Results", outputFileFullPath + "_focci_red_channel.csv");
+
 setBatchMode(false);
 
 // --- Analyse each image --- //
@@ -58,9 +73,10 @@ function analyseImage(seriesNo) {
 	run("Duplicate...", "title=[" + originalDuplicate + "] duplicate");
 	run("Gaussian Blur...", "sigma=1 stack"); //denoising filter
 	
-	// Starting to detect nuclei<
+	// Starting
 	nucleousImage = "nucleous_image";
 	run("Duplicate...", "title=" + nucleousImage + " duplicate channels=1");
+	
 	// run a background subtraction if the background image exists
 	if (File.exists(backgroundImageDapi)) {
 		subtractBackgroundImage(nucleousImage,backgroundImageDapi);
@@ -84,15 +100,35 @@ function analyseImage(seriesNo) {
 	
 	// Analyse nuclei
 	for (nucleousId = 0; nucleousId < nNucleous; nucleousId++) {
-		analyseNucleous("nucleous_" + nucleousId);
+		print("Analysing nucleous: "+ nucleousId);
+		nFocciGreen = analyseNucleous("nucleous_" + nucleousId, greenChannel, redChannel);
+		print("Green channel analysed. Focci found = " + nFocciGreen);
+		nfocciRed = analyseNucleous("nucleous_" + nucleousId, redChannel, greenChannel);
+		print("Red channel analysed. Focci found = " + nfocciRed);
+		
+		selectWindow(outputTable_Nuclei);
+		Table.set("Image_name", outputLine_nuclei, originalImage);
+		Table.set("Cell_no", outputLine_nuclei, nucleousId);
+		Table.set("Green_Focci", outputLine_nuclei, nFocciGreen);
+		Table.set("Red_Focci", outputLine_nuclei, nfocciRed);
+		outputLine_nuclei = outputLine_nuclei + 1;
+		
 		closeWindow("nucleous_" + nucleousId);
-	} 
+	}
 	
 	
 	// Close windows
-	selectWindow(outputTable);
-	saveAs("Results", outputFileFullPath);
-	Table.rename(outputFile, outputTable);
+	selectWindow(outputTable_Nuclei); //save progress
+	saveAs("Results", outputFileFullPath + "_nuclei.csv");
+	Table.rename(outputFile + "_nuclei.csv", outputTable_Nuclei);	
+	
+	selectWindow(outputTableFocciGreenChannel); //save progress
+	saveAs("Results", outputFileFullPath + "_focci_green_channel.csv");
+	Table.rename(outputFile + "_focci_green_channel.csv", outputTableFocciGreenChannel);
+	
+	selectWindow(outputTableFocciRedChannel); //save progress
+	saveAs("Results", outputFileFullPath + "_focci_red_channel.csv");
+	Table.rename(outputFile + "_focci_red_channel.csv", outputTableFocciRedChannel);
 	
 	closeWindow(nucleousImage);
 	closeWindow(originalDuplicate);
@@ -100,25 +136,27 @@ function analyseImage(seriesNo) {
 }
 
 // --- Analyse each Nucleous --- //
-function analyseNucleous(image) { 
+function analyseNucleous(image, focciChannel, comparisonChannel) { 
 	selectWindow(image);
 	run("Select None");
-	nucleousRedChannel = "red_channel";
-	run("Duplicate...", "title=" + nucleousRedChannel + " duplicate channels=" + focciChannel);
+	focciChannelWindow = "focci_channel";
+	run("Duplicate...", "title=" + focciChannelWindow + " duplicate channels=" + focciChannel);
 	clearRoiManager();
+	
+	// Run ComDet
 	run("Detect Particles", "ch1i ch1a=" + focciSize + " ch1s=" + focciIntensity + " rois=Rectangles add=[All detections] summary=Reset");
-	closeWindow(nucleousRedChannel);
+	closeWindow(focciChannelWindow);
 	
 	// loop through the focci
 	nFocci = roiManager('count');
 	for (focciId = 0; focciId < nFocci; focciId++) {
-		analyseFocci(image, focciId);
+		analyseFocci(image, focciId, focciChannel, comparisonChannel);
 	}
-	
+	return nFocci;
 }
 
 // --- Analyse each focci --- //
-function analyseFocci(image, focciId) {
+function analyseFocci(image, focciId, focciChannel, comparisonChannel) {
 		selectWindow(image);
 		roiManager("select", focciId);
 		focciImage = "focci_" + focciId + "_main";
@@ -141,6 +179,15 @@ function analyseFocci(image, focciId) {
 		m2 = Table.get("M2", 0);
 		
 		// Fill the output table
+		if (focciChannel == greenChannel) { //Set variables to the green channel
+			outputTable = outputTableFocciGreenChannel;
+			outputLine = outputLineFocciGreenChannel;
+		}
+		if (focciChannel == redChannel) { //Set variables to the red channel
+			outputTable = outputTableFocciRedChannel;
+			outputLine = outputLineFocciRedChannel;
+		}
+		
 		selectWindow(outputTable);
 		Table.set("Image_name", outputLine, originalImage);
 		Table.set("Cell_no", outputLine, nucleousId);
@@ -152,7 +199,13 @@ function analyseFocci(image, focciId) {
 		Table.set("ICQ", outputLine, icq);
 		Table.set("M1", outputLine, m1);
 		Table.set("M2", outputLine, m2);
-		outputLine = outputLine + 1;
+		
+		if (focciChannel == greenChannel) {
+			outputLineFocciGreenChannel = outputLine + 1;
+		}
+		if (focciChannel == redChannel) {
+			outputLineFocciRedChannel = outputLine + 1;
+		}
 		
 		// Close windows
 		closeWindow(focciImage);
