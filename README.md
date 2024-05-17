@@ -1,10 +1,10 @@
 # Focci colocalization
 
 This is a FIJJ[1] macro script to automate focci colocalization in .HTD images from the ImageXpress spinning disk confocal.
-The analysis pipeline follows the work described in Panichnantakul et al[1]. 
+The analysis pipeline follows the work described in Panichnantakul et al[2]. 
 
 ## How to use:
-Install Comdet[2], and EzColocalization[3] according to the developer's instructions.
+Install Comdet[3], and EzColocalization[4] according to the developer's instructions.
 
 Simply, load the main.py into FIJI and run it. 
 By including a background image in the same folder as the image, the script also performs a background subtraction (division).
